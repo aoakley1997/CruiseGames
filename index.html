@@ -352,7 +352,7 @@ async function connect(user){if(connected)return;ready=false;connected=false;say
     if(unsub)unsub();unsub=onSnapshot(ref,s=>{
       if(!s.exists()||!valid(s.data()?.state))return;
       if(s.metadata.hasPendingWrites||s.metadata.fromCache)return;
-      base=clone(s.data().state);preview();statusText();flush();
+      base=clone(s.data().state);window.cruiseChaosConfirmedState=clone(base);window.dispatchEvent(new Event("cruise-chaos-confirmed"));preview();statusText();flush();
     },e=>{console.error("Live sync error",e);connected=false;statusText()});
     say("");statusText();flush();
   }catch(e){console.error("Connection error",e);ready=false;connected=false;say(`Could not connect: ${e.code||e.message||"Unknown error"}. Existing data was not reset.`);statusText();}
@@ -393,6 +393,21 @@ const app=init(cfg,"poppy-postcards");const auth=getAuth(app),db=getFirestore(ap
 const $=id=>document.getElementById(id),status=$("poppy-status");
 let editing=null,stopMessages=null,stopReactions=[];
 const adultUid="mim5JdqJnjO4WjYyDKFbooPfQbV2";
+let lastPublishedKey="",publishing=false;
+async function publishLeaderboard(){
+ const data=window.cruiseChaosConfirmedState,user=auth.currentUser;
+ if(!data||!user||user.uid!==adultUid||publishing||!navigator.onLine)return;
+ const ids=["you","mum","dad"],labels=["Utsy","Nana","Poppa"];
+ const players=ids.map((id,i)=>({id,name:labels[i],score:Math.max(0,Math.floor(Number(data.scores?.[id]||0))),bingo:(Object.values(data.bingoCards||{}).filter(c=>c&&typeof c==="object"&&(c.player===id||c.playerId===id)).reduce((n,c)=>n+(Array.isArray(c.marked)?c.marked.length:0),0)),quests:0}));
+ const summary={day:Math.max(1,Math.min(8,Number(data.day)||1)),finalLocked:!!data.finalLocked,players};
+ const key=JSON.stringify(summary);if(key===lastPublishedKey)return;
+ publishing=true;
+ try{await setDoc(doc(db,"public","cruiseLeaderboard"),{...summary,updatedAt:serverTimestamp(),updatedBy:user.uid});lastPublishedKey=key}
+ catch(e){console.warn("Poppy leaderboard publishing:",e);status.textContent="Postcards connected; leaderboard update pending: "+(e.code||e.message)}
+ finally{publishing=false}
+}
+window.addEventListener("cruise-chaos-confirmed",publishLeaderboard);
+window.addEventListener("online",publishLeaderboard);
 const escape=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 $("poppy-login").onclick=async()=>{status.textContent="Connecting…";try{await setPersistence(auth,browserLocalPersistence);await signInWithEmailAndPassword(auth,$("poppy-email").value.trim(),$("poppy-password").value);status.textContent="Connected 💙"}catch(e){status.textContent="Sign-in failed: "+(e.code||e.message)}finally{$("poppy-password").value=""}};
 function reset(){editing=null;$("poppy-text").value="";$("poppy-send").textContent="💌 Send postcard";$("poppy-cancel").hidden=true}
