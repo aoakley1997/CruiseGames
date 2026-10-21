@@ -393,18 +393,19 @@ const app=init(cfg,"poppy-postcards");const auth=getAuth(app),db=getFirestore(ap
 const $=id=>document.getElementById(id),status=$("poppy-status");
 let editing=null,stopMessages=null,stopReactions=[];
 const adultUid="mim5JdqJnjO4WjYyDKFbooPfQbV2";
-let lastPublishedKey="",publishing=false;
+let lastPublishedKey="",publishing=false,publishAgain=false;
 async function publishLeaderboard(){
+ if(publishing){publishAgain=true;return}
  const data=window.cruiseChaosConfirmedState,user=auth.currentUser;
- if(!data||!user||user.uid!==adultUid||publishing||!navigator.onLine)return;
+ if(!data||!user||user.uid!==adultUid||!navigator.onLine)return;
  const ids=["you","mum","dad"],labels=["Utsy","Nana","Poppa"];
- const players=ids.map((id,i)=>({id,name:labels[i],score:Math.max(0,Math.floor(Number(data.scores?.[id]||0))),bingo:(Object.values(data.bingoCards||{}).filter(c=>c&&typeof c==="object"&&(c.player===id||c.playerId===id)).reduce((n,c)=>n+(Array.isArray(c.marked)?c.marked.length:0),0)),quests:0}));
+ const players=ids.map((id,i)=>({id,name:labels[i],score:Math.max(0,Math.floor(Number(data.scores?.[id]||0))),bingo:0,quests:0}));
  const summary={day:Math.max(1,Math.min(8,Number(data.day)||1)),finalLocked:!!data.finalLocked,players};
  const key=JSON.stringify(summary);if(key===lastPublishedKey)return;
  publishing=true;
- try{await setDoc(doc(db,"public","cruiseLeaderboard"),{...summary,updatedAt:serverTimestamp(),updatedBy:user.uid});lastPublishedKey=key}
- catch(e){console.warn("Poppy leaderboard publishing:",e);status.textContent="Postcards connected; leaderboard update pending: "+(e.code||e.message)}
- finally{publishing=false}
+ try{await setDoc(doc(db,"public","cruiseLeaderboard"),{...summary,updatedAt:serverTimestamp(),updatedBy:user.uid});lastPublishedKey=key;status.textContent="Connected to Poppy's postcards 💙 · 🏆 Scores synced"}
+ catch(e){console.error("Poppy leaderboard publishing:",e);status.textContent="Postcards connected; 🏆 scores not synced: "+(e.code||e.message)}
+ finally{publishing=false;if(publishAgain){publishAgain=false;publishLeaderboard()}}
 }
 window.addEventListener("cruise-chaos-confirmed",publishLeaderboard);
 window.addEventListener("online",publishLeaderboard);
